@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Map with Points (Yandex Maps)</title>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=17bf3fad-83a3-41d8-9435-9f48503e0d7d&lang=ru_RU`" type="text/javascript"></script>
+    <style>
+        #map {
+            width: 100%;
+            height: 500px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Добавление точек на карте</h1>
+    <div id="map"></div>
+
+    <script>
+        // Инициализация карты
+        ymaps.ready(init);
+
+        let myMap;
+
+        function init() {
+            myMap = new ymaps.Map("map", {
+                center: [55.751244, 37.618423],
+                zoom: 5
+            });
+
+            // Загрузка существующих точек
+            loadPoints();
+
+            // Добавление обработчика клика для создания новой точки
+            myMap.events.add('click', function (e) {
+                const coords = e.get('coords');
+                showAddPointBalloon(coords);
+            });
+        }
+
+        // Функция для загрузки точек с сервера
+function loadPoints() {
+    fetch('/api/points/')
+        .then(response => response.json())
+        .then(data => {
+            data.forEach(point => {
+                let balloonContent = `<b>${point.name}</b><br>${point.description}`;
+
+                // Проверка на наличие изображения и корректное формирование URL
+                if (point.image) {
+                    const imageUrl = point.image.startsWith('http') ? point.image : `${window.location.origin}${point.image}`;
+                    balloonContent += `<br><img src="${imageUrl}" style="max-width:200px; max-height:200px;">`;
+                }
+
+                const placemark = new ymaps.Placemark(
+                    [point.latitude, point.longitude],
+                    {
+                        balloonContent: balloonContent
+                    }
+                );
+                myMap.geoObjects.add(placemark);
+            });
+        })
+        .catch(error => console.error('Ошибка при загрузке точек:', error));
+}
+
+
+        // Функция для отображения балуна с формой для добавления новой точки
+        function showAddPointBalloon(coords) {
+            const balloonContent = `
+                <div>
+                    <h3>Добавить новую точку</h3>
+                    <label>Название:<br>
+                        <input type="text" id="point-name" placeholder="Название точки">
+                    </label><br><br>
+                    <label>Описание:<br>
+                        <textarea id="point-description" placeholder="Описание точки"></textarea>
+                    </label><br><br>
+                    <label>Изображение:<br>
+                        <input type="file" id="point-image">
+                    </label><br><br>
+                    <button onclick="addPoint(${coords[0]}, ${coords[1]})">Добавить точку</button>
+                </div>
+            `;
+
+            myMap.balloon.open(coords, {
+                content: balloonContent
+            });
+        }
+
+        // Функция для добавления точки через API
+        function addPoint(lat, lon) {
+            const name = document.getElementById('point-name').value;
+            const description = document.getElementById('point-description').value;
+            const imageInput = document.getElementById('point-image');
+            const imageFile = imageInput.files[0];
+
+            if (!name || !description) {
+                alert('Пожалуйста, заполните все поля!');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('description', description);
+            formData.append('latitude', lat);
+            formData.append('longitude', lon);
+            if (imageFile) {
+                formData.append('image', imageFile);
+            }
+
+            fetch('/api/points/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert('Точка успешно добавлена!');
+                    myMap.balloon.close();
+                    loadPoints(); // Перезагрузить точки на карте
+                } else {
+                    alert('Ошибка при добавлении точки.');
+                }
+            });
+        }
+
+        // Функция для получения CSRF-токена из cookies
+        function getCSRFToken() {
+            let cookieValue = null;
+            const name = 'csrftoken';
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.startsWith(name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+</body>
+</html>
